@@ -1,0 +1,21 @@
+.env
+ffmpeg.exe
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE / editor folders
+.vscode/
+.idea/
+
+# Environment files
+.env*
+
+# macOS
+.DS_Store
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
