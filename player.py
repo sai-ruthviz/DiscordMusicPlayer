@@ -23,8 +23,10 @@ song_queues = {}
 
 # Set up yt_dlp options for best audio format
 yt_dl_options = {
-    'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
-    'noplaylist': True
+    'format': 'bestaudio/best',
+    'noplaylist': True,
+    'verbose': True,  # Enable verbose output to see selected format details
+    'dump_single_json': False  # Don't enable full JSON dump as it breaks the download
 }
 ytdl = yt_dlp.YoutubeDL(yt_dl_options)
 
@@ -124,14 +126,68 @@ async def search_song(interaction: discord.Interaction, song_title: str):
   await interaction.response.defer()
   search_url = f"ytsearch:{song_title}"
   loop = asyncio.get_event_loop()
-  data = await loop.run_in_executor(
-      None, lambda: ytdl.extract_info(search_url, download=False))
-
-  if 'entries' in data and len(data['entries']) > 0:
-    song = data['entries'][0]
-    await add_song_to_queue(interaction, song['url'], song['title'])
-  else:
-    await interaction.followup.send(f"No results found for '{song_title}'.")
+  
+  try:
+    # Use a modified extract_info to directly get the format information
+    def extract_with_info():
+      info = ytdl.extract_info(search_url, download=False)
+      
+      # Debug: Print available info keys
+      print(f"Info keys: {list(info.keys())}")
+      
+      if 'entries' in info and len(info['entries']) > 0:
+        entry = info['entries'][0]
+        print(f"Entry keys: {list(entry.keys())}")
+        
+        # Print all available formats
+        if 'formats' in entry:
+          print("\nALL AVAILABLE FORMATS:")
+          for fmt in entry['formats']:
+            print(f"Format ID: {fmt.get('format_id')} - Ext: {fmt.get('ext')} - "
+                  f"Audio: {fmt.get('acodec')} - Video: {fmt.get('vcodec')} - "
+                  f"ABR: {fmt.get('abr')} - TBR: {fmt.get('tbr')}")
+        
+        # Debug: Look for best format - what yt-dlp actually selected
+        if 'requested_formats' in entry:
+          print("\nSELECTED FORMATS:")
+          for fmt in entry['requested_formats']:
+            format_id = fmt.get('format_id', 'unknown')
+            ext = fmt.get('ext', 'unknown')
+            acodec = fmt.get('acodec', 'none')
+            abr = fmt.get('abr', fmt.get('tbr', 'unknown'))
+            
+            print(f"Selected format: {format_id} ({ext})")
+            print(f"Audio codec: {acodec}, Bitrate: {abr} kbps")
+        elif 'format_id' in entry:
+          # Single format selected
+          print("\nSINGLE SELECTED FORMAT:")
+          print(f"Format ID: {entry.get('format_id')} - Ext: {entry.get('ext')}")
+          print(f"Audio codec: {entry.get('acodec')}, Bitrate: {entry.get('abr', entry.get('tbr', 'unknown'))} kbps")
+        else:
+          print("No format information available in the entry")
+        
+        # Try to get the actual URL
+        if 'url' in entry:
+          return entry
+        # Handle direct formats
+        elif 'direct' in entry and entry['direct']:
+          print("Direct format entry found")
+          return entry
+      
+      # If we're here, no entries were found or processing failed
+      return info
+    
+    data = await loop.run_in_executor(None, extract_with_info)
+    
+    # Process and queue the song
+    if data and 'url' in data:
+      await add_song_to_queue(interaction, data['url'], data['title'])
+    else:
+      await interaction.followup.send(f"No results found for '{song_title}' or format information unavailable.")
+      
+  except Exception as e:
+    print(f"Error in search_song: {e}")
+    await interaction.followup.send(f"Error searching for '{song_title}': {str(e)}")
 
 
 # ▶️ Slash command to play a song from a URL
@@ -140,21 +196,55 @@ async def search_song(interaction: discord.Interaction, song_title: str):
 async def play_song(interaction: discord.Interaction, song_url: str):
   await interaction.response.defer()
   loop = asyncio.get_event_loop()
-  data = await loop.run_in_executor(
-      None, lambda: ytdl.extract_info(song_url, download=False))
-
-  if 'formats' in data:
-    audio_url = next(
-        (fmt['url'] for fmt in data['formats']
-         if fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none'), None)
-    if audio_url:
-      await add_song_to_queue(interaction, audio_url, data['title'])
+  
+  try:
+    # Use a modified extract_info to directly get the format information
+    def extract_with_info():
+      info = ytdl.extract_info(song_url, download=False)
+      
+      # Debug: Print available info keys
+      print(f"Info keys: {list(info.keys())}")
+      
+      # Print all available formats
+      if 'formats' in info:
+        print("\nALL AVAILABLE FORMATS:")
+        for fmt in info['formats']:
+          print(f"Format ID: {fmt.get('format_id')} - Ext: {fmt.get('ext')} - "
+                f"Audio: {fmt.get('acodec')} - Video: {fmt.get('vcodec')} - "
+                f"ABR: {fmt.get('abr')} - TBR: {fmt.get('tbr')}")
+      
+      # Debug: Look for best format - what yt-dlp actually selected
+      if 'requested_formats' in info:
+        print("\nSELECTED FORMATS:")
+        for fmt in info['requested_formats']:
+          format_id = fmt.get('format_id', 'unknown')
+          ext = fmt.get('ext', 'unknown')
+          acodec = fmt.get('acodec', 'none')
+          abr = fmt.get('abr', fmt.get('tbr', 'unknown'))
+          
+          print(f"Selected format: {format_id} ({ext})")
+          print(f"Audio codec: {acodec}, Bitrate: {abr} kbps")
+      elif 'format_id' in info:
+        # Single format selected
+        print("\nSINGLE SELECTED FORMAT:")
+        print(f"Format ID: {info.get('format_id')} - Ext: {info.get('ext')}")
+        print(f"Audio codec: {info.get('acodec')}, Bitrate: {info.get('abr', info.get('tbr', 'unknown'))} kbps")
+      else:
+        print("No format information available in the info")
+      
+      return info
+    
+    data = await loop.run_in_executor(None, extract_with_info)
+    
+    # Process and queue the song
+    if data and 'url' in data:
+      await add_song_to_queue(interaction, data['url'], data['title'])
     else:
-      await interaction.followup.send(
-          "⚠️ No valid audio format found for this video.")
-  else:
-    await interaction.followup.send(
-        "⚠️ Could not extract audio from the provided URL.")
+      await interaction.followup.send("⚠️ Could not extract audio from the provided URL.")
+      
+  except Exception as e:
+    print(f"Error in play_song: {e}")
+    await interaction.followup.send(f"Error playing '{song_url}': {str(e)}")
 
 
 # ➕ Function to add a song to the queue
@@ -181,7 +271,7 @@ async def add_song_to_queue(interaction, song_url, title):
   if not voice_client.is_playing() and not voice_client.is_paused():
     await play_next_song(guild_id, voice_client, interaction.channel)
 
-  embed = discord.Embed(title=f"🎵 Added to Queue: {title}",
+  embed = discord.Embed(title=f"🎵 Added to Queue1: {title}",
                         description="Playing from YouTube",
                         color=discord.Color.blue())
   await interaction.followup.send(embed=embed)
@@ -262,5 +352,4 @@ async def show_queue(interaction: discord.Interaction):
 
 
 # Run the bot with retry logic
-if __name__ == "__main__":
-  asyncio.run(start_bot())
+asyncio.run(start_bot())
