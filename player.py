@@ -8,9 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOKEN = os.getenv('DISCORD_TOKEN')
-if TOKEN is None:
-  raise RuntimeError("DISCORD_TOKEN environment variable not set. Create a .env file with DISCORD_TOKEN=<your token>.")
+TOKEN = os.getenv('discord_token')
 
 # Set up the bot
 intents = discord.Intents.default()
@@ -36,7 +34,6 @@ ffmpeg_options = {
     '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn -filter:a "loudnorm=I=-16:TP=-1.5:LRA=12" -b:a 320k'
 }
-
 
 # Function to handle bot login with retry logic
 async def start_bot():
@@ -76,6 +73,9 @@ async def on_ready():
     for guild in bot.guilds:
       await bot.tree.sync(guild=guild)
       print(f"✅ Synced commands for {guild.name} ({guild.id})")
+      
+    # Schedule periodic cleanup
+    bot.loop.create_task(periodic_cleanup())
 
   except Exception as e:
     print(f"⚠️ Error syncing commands: {e}")
@@ -106,6 +106,11 @@ async def play_next_song(guild_id, voice_client, channel):
     except Exception as e:
       print(f"⚠️ Error playing audio: {e}")
       await channel.send(f"⚠️ Error playing **{title}**")
+      
+      # Try next song if available
+      if guild_id in song_queues and song_queues[guild_id]:
+        await channel.send("Attempting to play next song...")
+        await play_next_song(guild_id, voice_client, channel)
 
   else:
     await channel.send("🎶 The queue is currently empty.")
@@ -116,6 +121,40 @@ async def handle_next_song(guild_id, voice_client, channel):
   if not voice_client.is_playing(
   ) and guild_id in song_queues and song_queues[guild_id]:
     await play_next_song(guild_id, voice_client, channel)
+
+
+# Helper function to print format information
+def print_format_info(info_dict):
+    """Print detailed format information from yt-dlp results"""
+    # Print available info keys
+    print(f"Info keys: {list(info_dict.keys())}")
+    
+    # Print all available formats
+    if 'formats' in info_dict:
+        print("\nALL AVAILABLE FORMATS:")
+        for fmt in info_dict['formats']:
+            print(f"Format ID: {fmt.get('format_id')} - Ext: {fmt.get('ext')} - "
+                  f"Audio: {fmt.get('acodec')} - Video: {fmt.get('vcodec')} - "
+                  f"ABR: {fmt.get('abr')} - TBR: {fmt.get('tbr')}")
+    
+    # Debug: Look for best format - what yt-dlp actually selected
+    if 'requested_formats' in info_dict:
+        print("\nSELECTED FORMATS:")
+        for fmt in info_dict['requested_formats']:
+            format_id = fmt.get('format_id', 'unknown')
+            ext = fmt.get('ext', 'unknown')
+            acodec = fmt.get('acodec', 'none')
+            abr = fmt.get('abr', fmt.get('tbr', 'unknown'))
+            
+            print(f"Selected format: {format_id} ({ext})")
+            print(f"Audio codec: {acodec}, Bitrate: {abr} kbps")
+    elif 'format_id' in info_dict:
+        # Single format selected
+        print("\nSINGLE SELECTED FORMAT:")
+        print(f"Format ID: {info_dict.get('format_id')} - Ext: {info_dict.get('ext')}")
+        print(f"Audio codec: {info_dict.get('acodec')}, Bitrate: {info_dict.get('abr', info_dict.get('tbr', 'unknown'))} kbps")
+    else:
+        print("No format information available in the info")
 
 
 # 🔍 Slash command to search YouTube and play the first result
@@ -132,39 +171,13 @@ async def search_song(interaction: discord.Interaction, song_title: str):
     def extract_with_info():
       info = ytdl.extract_info(search_url, download=False)
       
-      # Debug: Print available info keys
-      print(f"Info keys: {list(info.keys())}")
-      
       if 'entries' in info and len(info['entries']) > 0:
         entry = info['entries'][0]
         print(f"Entry keys: {list(entry.keys())}")
         
-        # Print all available formats
+        # Print format information
         if 'formats' in entry:
-          print("\nALL AVAILABLE FORMATS:")
-          for fmt in entry['formats']:
-            print(f"Format ID: {fmt.get('format_id')} - Ext: {fmt.get('ext')} - "
-                  f"Audio: {fmt.get('acodec')} - Video: {fmt.get('vcodec')} - "
-                  f"ABR: {fmt.get('abr')} - TBR: {fmt.get('tbr')}")
-        
-        # Debug: Look for best format - what yt-dlp actually selected
-        if 'requested_formats' in entry:
-          print("\nSELECTED FORMATS:")
-          for fmt in entry['requested_formats']:
-            format_id = fmt.get('format_id', 'unknown')
-            ext = fmt.get('ext', 'unknown')
-            acodec = fmt.get('acodec', 'none')
-            abr = fmt.get('abr', fmt.get('tbr', 'unknown'))
-            
-            print(f"Selected format: {format_id} ({ext})")
-            print(f"Audio codec: {acodec}, Bitrate: {abr} kbps")
-        elif 'format_id' in entry:
-          # Single format selected
-          print("\nSINGLE SELECTED FORMAT:")
-          print(f"Format ID: {entry.get('format_id')} - Ext: {entry.get('ext')}")
-          print(f"Audio codec: {entry.get('acodec')}, Bitrate: {entry.get('abr', entry.get('tbr', 'unknown'))} kbps")
-        else:
-          print("No format information available in the entry")
+            print_format_info(entry)
         
         # Try to get the actual URL
         if 'url' in entry:
@@ -202,35 +215,8 @@ async def play_song(interaction: discord.Interaction, song_url: str):
     def extract_with_info():
       info = ytdl.extract_info(song_url, download=False)
       
-      # Debug: Print available info keys
-      print(f"Info keys: {list(info.keys())}")
-      
-      # Print all available formats
-      if 'formats' in info:
-        print("\nALL AVAILABLE FORMATS:")
-        for fmt in info['formats']:
-          print(f"Format ID: {fmt.get('format_id')} - Ext: {fmt.get('ext')} - "
-                f"Audio: {fmt.get('acodec')} - Video: {fmt.get('vcodec')} - "
-                f"ABR: {fmt.get('abr')} - TBR: {fmt.get('tbr')}")
-      
-      # Debug: Look for best format - what yt-dlp actually selected
-      if 'requested_formats' in info:
-        print("\nSELECTED FORMATS:")
-        for fmt in info['requested_formats']:
-          format_id = fmt.get('format_id', 'unknown')
-          ext = fmt.get('ext', 'unknown')
-          acodec = fmt.get('acodec', 'none')
-          abr = fmt.get('abr', fmt.get('tbr', 'unknown'))
-          
-          print(f"Selected format: {format_id} ({ext})")
-          print(f"Audio codec: {acodec}, Bitrate: {abr} kbps")
-      elif 'format_id' in info:
-        # Single format selected
-        print("\nSINGLE SELECTED FORMAT:")
-        print(f"Format ID: {info.get('format_id')} - Ext: {info.get('ext')}")
-        print(f"Audio codec: {info.get('acodec')}, Bitrate: {info.get('abr', info.get('tbr', 'unknown'))} kbps")
-      else:
-        print("No format information available in the info")
+      # Print format information
+      print_format_info(info)
       
       return info
     
@@ -271,7 +257,7 @@ async def add_song_to_queue(interaction, song_url, title):
   if not voice_client.is_playing() and not voice_client.is_paused():
     await play_next_song(guild_id, voice_client, interaction.channel)
 
-  embed = discord.Embed(title=f"🎵 Added to Queue1: {title}",
+  embed = discord.Embed(title=f"🎵 Added to Queue: {title}",
                         description="Playing from YouTube",
                         color=discord.Color.blue())
   await interaction.followup.send(embed=embed)
@@ -349,6 +335,28 @@ async def show_queue(interaction: discord.Interaction):
                         description=queue_list,
                         color=discord.Color.blue())
   await interaction.response.send_message(embed=embed)
+
+
+# Clean up disconnected voice clients
+async def cleanup_voice_clients():
+    """Remove disconnected voice clients from the dictionary"""
+    disconnected = []
+    for guild_id, voice_client in voice_clients.items():
+        if not voice_client.is_connected():
+            disconnected.append(guild_id)
+    
+    for guild_id in disconnected:
+        del voice_clients[guild_id]
+        print(f"Cleaned up disconnected voice client for guild {guild_id}")
+
+
+# Periodic cleanup task
+async def periodic_cleanup():
+    """Run cleanup tasks periodically"""
+    while True:
+        await asyncio.sleep(3600)  # Run every hour instead of every 5 minutes
+        await cleanup_voice_clients()
+        print("Periodic cleanup completed - Next cleanup in 1 hour")
 
 
 # Run the bot with retry logic
