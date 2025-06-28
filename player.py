@@ -250,7 +250,7 @@ def print_format_info(info_dict):
 
 # 🔍 Slash command to search YouTube and play the first result
 @bot.tree.command(
-    name="asearch",
+    name="search",
     description="Search YouTube for a song and play the first result")
 async def search_song(interaction: discord.Interaction, song_title: str):
   await interaction.response.defer()
@@ -273,7 +273,7 @@ async def search_song(interaction: discord.Interaction, song_title: str):
 
 
 # ▶️ Slash command to play a song from a URL
-@bot.tree.command(name="auplay",
+@bot.tree.command(name="play",
                   description="Play a song from a direct YouTube link")
 async def play_song(interaction: discord.Interaction, song_url: str):
   await interaction.response.defer()
@@ -325,7 +325,7 @@ async def add_song_to_queue(interaction, song_url, title):
 
 
 # ⏯️ Slash command to pause the current song
-@bot.tree.command(name="apause", description="Pause the current song")
+@bot.tree.command(name="pause", description="Pause the current song")
 async def pause_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_playing():
@@ -346,7 +346,7 @@ async def resume_song(interaction: discord.Interaction):
     await interaction.response.send_message("⚠️ No song is currently paused.")
 
 
-@bot.tree.command(name="askip", description="Skip the current song")
+@bot.tree.command(name="skip", description="Skip the current song")
 async def skip_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_playing():
@@ -358,7 +358,7 @@ async def skip_song(interaction: discord.Interaction):
 
 
 # 🔌 Slash command to disconnect the bot from voice
-@bot.tree.command(name="aleave",
+@bot.tree.command(name="leave",
                   description="Disconnect the bot from the voice channel")
 async def leave_voice(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
@@ -377,7 +377,7 @@ async def leave_voice(interaction: discord.Interaction):
 
 
 # 📜 Slash command to show the current song queue
-@bot.tree.command(name="aqueue", description="Show the current song queue")
+@bot.tree.command(name="queue", description="Show the current song queue")
 async def show_queue(interaction: discord.Interaction):
   guild_id = interaction.guild.id
   voice_client = voice_clients.get(guild_id)
@@ -422,7 +422,7 @@ def format_time_duration(seconds):
 
 
 # 🗑️ Slash command to clear the song queue
-@bot.tree.command(name="aclear", description="Clear the current song queue")
+@bot.tree.command(name="clear", description="Clear the current song queue")
 async def clear_queue(interaction: discord.Interaction):
   guild_id = interaction.guild.id
   
@@ -441,7 +441,7 @@ async def clear_queue(interaction: discord.Interaction):
 
 # 🎵 Slash command to add a YouTube playlist to the queue
 @bot.tree.command(
-    name="alist",
+    name="list",
     description="Add songs from a YouTube playlist to the queue")
 @app_commands.describe(
     playlist_url="The URL of the YouTube playlist",
