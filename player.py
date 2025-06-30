@@ -250,7 +250,7 @@ def print_format_info(info_dict):
 
 # 🔍 Slash command to search YouTube and play the first result
 @bot.tree.command(
-    name="search",
+    name="asearch",
     description="Search YouTube for a song and play the first result")
 async def search_song(interaction: discord.Interaction, song_title: str):
   await interaction.response.defer()
@@ -273,7 +273,7 @@ async def search_song(interaction: discord.Interaction, song_title: str):
 
 
 # ▶️ Slash command to play a song from a URL
-@bot.tree.command(name="play",
+@bot.tree.command(name="auplay",
                   description="Play a song from a direct YouTube link")
 async def play_song(interaction: discord.Interaction, song_url: str):
   await interaction.response.defer()
@@ -325,7 +325,7 @@ async def add_song_to_queue(interaction, song_url, title):
 
 
 # ⏯️ Slash command to pause the current song
-@bot.tree.command(name="pause", description="Pause the current song")
+@bot.tree.command(name="apause", description="Pause the current song")
 async def pause_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_playing():
@@ -346,7 +346,7 @@ async def resume_song(interaction: discord.Interaction):
     await interaction.response.send_message("⚠️ No song is currently paused.")
 
 
-@bot.tree.command(name="skip", description="Skip the current song")
+@bot.tree.command(name="askip", description="Skip the current song")
 async def skip_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_playing():
@@ -358,7 +358,7 @@ async def skip_song(interaction: discord.Interaction):
 
 
 # 🔌 Slash command to disconnect the bot from voice
-@bot.tree.command(name="leave",
+@bot.tree.command(name="aleave",
                   description="Disconnect the bot from the voice channel")
 async def leave_voice(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
@@ -377,7 +377,7 @@ async def leave_voice(interaction: discord.Interaction):
 
 
 # 📜 Slash command to show the current song queue
-@bot.tree.command(name="queue", description="Show the current song queue")
+@bot.tree.command(name="aqueue", description="Show the current song queue")
 async def show_queue(interaction: discord.Interaction):
   guild_id = interaction.guild.id
   voice_client = voice_clients.get(guild_id)
@@ -422,7 +422,7 @@ def format_time_duration(seconds):
 
 
 # 🗑️ Slash command to clear the song queue
-@bot.tree.command(name="clear", description="Clear the current song queue")
+@bot.tree.command(name="aclear", description="Clear the current song queue")
 async def clear_queue(interaction: discord.Interaction):
   guild_id = interaction.guild.id
   
@@ -439,9 +439,66 @@ async def clear_queue(interaction: discord.Interaction):
   await interaction.response.send_message(f"🗑️ Cleared {queue_length} songs from the queue.")
 
 
+# 🗑️ Slash command to remove songs from the queue
+@bot.tree.command(name="aremove", description="Remove specific songs from the queue")
+@app_commands.describe(
+    index="Index of the song to remove (starting from 1)",
+    length="Number of songs to remove (default: 1)"
+)
+async def remove_from_queue(
+    interaction: discord.Interaction, 
+    index: Range[int, 1, 1000],
+    length: Range[int, 1, 100] = 1
+):
+    guild_id = interaction.guild.id
+    
+    # Check if queue exists and is not empty
+    if guild_id not in song_queues or len(song_queues[guild_id]) == 0:
+        await interaction.response.send_message("⚠️ The queue is empty.")
+        return
+    
+    # Convert from 1-based (user) to 0-based (internal) indexing
+    zero_index = index - 1
+    queue_length = len(song_queues[guild_id])
+    
+    # Check if index is valid
+    if zero_index >= queue_length:
+        await interaction.response.send_message(f"⚠️ Invalid index: {index}. The queue only has {queue_length} songs.")
+        return
+    
+    # Adjust length if it would exceed the queue bounds
+    if zero_index + length > queue_length:
+        actual_length = queue_length - zero_index
+    else:
+        actual_length = length
+    
+    # Get titles of songs being removed for the message
+    removed_songs = []
+    for i in range(zero_index, zero_index + actual_length):
+        removed_songs.append(song_queues[guild_id][i]['title'])
+    
+    # Remove songs from the queue
+    del song_queues[guild_id][zero_index:zero_index + actual_length]
+    
+    # Prepare response message
+    if actual_length == 1:
+        response = f"🗑️ Removed song #{index}: {removed_songs[0]}"
+    else:
+        response = f"🗑️ Removed {actual_length} songs from positions {index}-{index+actual_length-1}:\n"
+        for i, title in enumerate(removed_songs):
+            response += f"{index+i}. {title}\n"
+            # Limit message length to avoid hitting Discord limits
+            if i >= 9 and len(removed_songs) > 10:  # Show at most 10 songs
+                remaining = len(removed_songs) - 10
+                response += f"...and {remaining} more."
+                break
+    
+    await interaction.response.send_message(response)
+
+
 # 🎵 Slash command to add a YouTube playlist to the queue
 @bot.tree.command(
-    name="list",
+    name="alist",
     description="Add songs from a YouTube playlist to the queue")
 @app_commands.describe(
     playlist_url="The URL of the YouTube playlist",
