@@ -4,7 +4,7 @@ import os
 import asyncio
 import time
 from discord.ext import commands
-from discord import FFmpegOpusAudio, FFmpegPCMAudio
+from discord import FFmpegOpusAudio
 from dotenv import load_dotenv
 from discord.app_commands.transformers import Range
 from discord import app_commands
@@ -24,8 +24,6 @@ song_queues = {}
 
 # Set up yt_dlp options for best audio format
 yt_dl_options = {
-    # Prioritize YouTube Opus (251), then any Opus, then best audio (hoping it's Opus).
-    # This provides a high-quality source for FFmpeg to decode to PCM.
     'format': 'bestaudio/best',
     'noplaylist': True,  # Keep playlists disabled by default
     'verbose': False,  # Disable verbose output in production - change to True for debugging
@@ -37,7 +35,7 @@ ytdl = yt_dlp.YoutubeDL(yt_dl_options)
 ffmpeg_options = {
     'before_options':
     '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'  # Simplified for FFmpegPCMAudio, no specific encoding options here
+    'options': '-vn -filter:a "loudnorm=I=-16:TP=-1.5:LRA=12" -b:a 320k'
 }
 
 # Function to handle bot login with retry logic
@@ -157,7 +155,7 @@ async def play_next_song(guild_id, voice_client, channel, retry_count=0):
 
       # ✅ Play the song and set an async `after` callback
       try:
-        player = FFmpegPCMAudio(song_url, **ffmpeg_options)
+        player = FFmpegOpusAudio(song_url, **ffmpeg_options)
         voice_client.play(
             player,
             after=lambda e: asyncio.run_coroutine_threadsafe(
@@ -252,7 +250,7 @@ def print_format_info(info_dict):
 
 # 🔍 Slash command to search YouTube and play the first result
 @bot.tree.command(
-    name="search",
+    name="asearch",
     description="Search YouTube for a song and play the first result")
 async def search_song(interaction: discord.Interaction, song_title: str):
   await interaction.response.defer()
@@ -275,7 +273,7 @@ async def search_song(interaction: discord.Interaction, song_title: str):
 
 
 # ▶️ Slash command to play a song from a URL
-@bot.tree.command(name="play",
+@bot.tree.command(name="auplay",
                   description="Play a song from a direct YouTube link")
 async def play_song(interaction: discord.Interaction, song_url: str):
   await interaction.response.defer()
@@ -327,7 +325,7 @@ async def add_song_to_queue(interaction, song_url, title):
 
 
 # ⏯️ Slash command to pause the current song
-@bot.tree.command(name="pause", description="Pause the current song")
+@bot.tree.command(name="apause", description="Pause the current song")
 async def pause_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_playing():
@@ -338,7 +336,7 @@ async def pause_song(interaction: discord.Interaction):
 
 
 # ▶️ Slash command to resume a paused song
-@bot.tree.command(name="resume", description="Resume the paused song")
+@bot.tree.command(name="aresume", description="Resume the paused song")
 async def resume_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_paused():
@@ -348,7 +346,7 @@ async def resume_song(interaction: discord.Interaction):
     await interaction.response.send_message("⚠️ No song is currently paused.")
 
 
-@bot.tree.command(name="skip", description="Skip the current song")
+@bot.tree.command(name="askip", description="Skip the current song")
 async def skip_song(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
   if voice_client and voice_client.is_playing():
@@ -360,7 +358,7 @@ async def skip_song(interaction: discord.Interaction):
 
 
 # 🔌 Slash command to disconnect the bot from voice
-@bot.tree.command(name="leave",
+@bot.tree.command(name="aleave",
                   description="Disconnect the bot from the voice channel")
 async def leave_voice(interaction: discord.Interaction):
   voice_client = voice_clients.get(interaction.guild.id)
@@ -379,7 +377,7 @@ async def leave_voice(interaction: discord.Interaction):
 
 
 # 📜 Slash command to show the current song queue
-@bot.tree.command(name="queue", description="Show the current song queue")
+@bot.tree.command(name="aqueue", description="Show the current song queue")
 async def show_queue(interaction: discord.Interaction):
   guild_id = interaction.guild.id
   voice_client = voice_clients.get(guild_id)
@@ -424,7 +422,7 @@ def format_time_duration(seconds):
 
 
 # 🗑️ Slash command to clear the song queue
-@bot.tree.command(name="clear", description="Clear the current song queue")
+@bot.tree.command(name="aclear", description="Clear the current song queue")
 async def clear_queue(interaction: discord.Interaction):
   guild_id = interaction.guild.id
   
@@ -442,7 +440,7 @@ async def clear_queue(interaction: discord.Interaction):
 
 
 # 🗑️ Slash command to remove songs from the queue
-@bot.tree.command(name="remove", description="Remove specific songs from the queue")
+@bot.tree.command(name="aremove", description="Remove specific songs from the queue")
 @app_commands.describe(
     index="Index of the song to remove (starting from 1)",
     length="Number of songs to remove (default: 1)"
@@ -500,7 +498,7 @@ async def remove_from_queue(
 
 # 🎵 Slash command to add a YouTube playlist to the queue
 @bot.tree.command(
-    name="list",
+    name="alist",
     description="Add songs from a YouTube playlist to the queue")
 @app_commands.describe(
     playlist_url="The URL of the YouTube playlist",
